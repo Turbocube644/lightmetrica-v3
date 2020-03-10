@@ -14,8 +14,15 @@ LM_NAMESPACE_BEGIN(LM_NAMESPACE)
 #define NEW_ENDING ".cvdb"
 #define META_ENDING ".json"
 
+using Vec3i = glm::tvec3<int>;
+
 class Volume_VdbConvertScalar : public Volume {
 private:
+    Bound bound_;
+    Float max_scalar_;
+    float* volume_;
+    Vec3i dimension_;
+
     std::string getAbsolutePath(std::string filename)
     {
         const int MAX_LENTH = 4096;
@@ -56,7 +63,11 @@ private:
     }
 
 public:
-    Volume_VdbConvertScalar() {
+    Volume_VdbConvertScalar() : volume_(nullptr) {
+    }
+
+private:
+    bool convert(const std::string& path, const Json& prop) {
         vdbloaderSetErrorFunc(nullptr, [](void*, int errorCode, const char* message) {
             const auto errStr = [&]() -> std::string {
                 if (errorCode == VDBLOADER_ERROR_INVALID_CONTEXT)
@@ -69,10 +80,7 @@ public:
             }();
             LM_ERROR("vdbloader error: {} [type='{}']", message, errStr);
         });
-    }
 
-private:
-    bool convert(const std::string& path, const Json& prop) {
         VDBLoaderContext context = vdbloaderCreateContext();
         LM_INFO("Opening OpenVDB file [path='{}']", path);
         if (!vdbloaderLoadVDBFile(context, path.c_str())) {
@@ -85,8 +93,8 @@ private:
         LM_INFO("Loaded OpnVDB. Now converting and saving to new format [path='{}'] with meta file [path='{}']", new_path, new_path_meta);
 
         // Density scale, remove?
-        Float scale = json::value<Float>(prop, "scale", 1_f);
-        Float step_size = json::value<Float>(prop, "step_size", .1_f);
+        const Float scale = json::value<Float>(prop, "scale", 1_f);
+        const Float step_size = json::value<Float>(prop, "step_size", .1_f);
 
         // Bound
         const auto b = vdbloaderGetBound(context);
@@ -96,6 +104,7 @@ private:
 
         // Maximum density
         Float max_scalar = vbdloaderGetMaxScalar(context) * scale;
+        LM_INFO("Max Scalar: {}", max_scalar);
 
         LM_INFO("Bound of Volume: [{}, {}, {}] to [{}, {}, {}].", 
             bound.min.x, 
@@ -158,22 +167,18 @@ private:
         jsonDimension.emplace("z", z_steps);
         json.emplace("dimension", jsonDimension);
         json.emplace("step_size", step_size);
+        json.emplace("max_scalar", max_scalar);
 
         std::ofstream meta_file_stream(new_path_meta, std::ios::out);
         meta_file_stream << json.dump(4);
         meta_file_stream.close();
 
-        // create large enough buffer
-        // auto volume_size = sizeof(Float) * x_steps * y_steps * z_steps;
-        // auto* volume = static_cast<Float*>(malloc(volume_size));
-
         std::ofstream converted_file_stream(new_path, std::ios::out | std::ios::binary);
         for(int z = 0; z < z_steps; z++) {
             for (int y = 0; y < y_steps; y++) {
                 for (int x = 0; x < x_steps; x++) {
-                    // volume[z * x_steps * y_steps + y * x_steps + x] = 
-                    Float value = vbdloaderEvalScalar(context, VDBLoaderFloat3{bound.min.x + x * step_size, bound.min.y + y * step_size, bound.min.z + z * step_size});
-                    converted_file_stream.write(reinterpret_cast<char*>(&value), sizeof(Float));
+                    float value = vbdloaderEvalScalar(context, VDBLoaderFloat3{bound.min.x + x * step_size, bound.min.y + y * step_size, bound.min.z + z * step_size});
+                    converted_file_stream.write(reinterpret_cast<char*>(&value), sizeof(float));
                 }
             }
         }
@@ -187,22 +192,56 @@ private:
 public:
     virtual void construct(const Json& prop) override {
         // Load VDB file
+        std::string path_base;
         const auto path = json::value<std::string>(prop, "path");
         if (endsWith(path, ".vdb")) {
             LM_INFO("Attempting old vdb load");
             convert(path, prop);
+            path_base = path.substr(0, path.find(VDB_ENDING));
+        } else {
+            path_base = path.substr(0, path.find(NEW_ENDING));
         }
+        std::string path_converted = path_base + NEW_ENDING;
+        std::string path_meta = path_base + META_ENDING;
 
-        // TODO
-        LM_INFO("Add some logic here");
+        std::ifstream meta_stream(path_meta);
+        Json meta = Json::parse(meta_stream);
+        const auto step_size = json::value<Float>(meta, "step_size");
+        const auto dimension = json::value<Json>(meta, "dimension");
+        dimension_ = Vec3i(json::value<int>(dimension, "x"), json::value<int>(dimension, "y"), json::value<int>(dimension, "z"));
+        Json bound = json::value<Json>(meta, "bound");
+        Json boundMin = json::value<Json>(bound, "min");
+        Json boundMax = json::value<Json>(bound, "max");
+        bound_.min = Vec3(json::value<Float>(boundMin, "x"), json::value<Float>(boundMin, "y"), json::value<Float>(boundMin, "z"));
+        bound_.max = Vec3(json::value<Float>(boundMax, "x"), json::value<Float>(boundMax, "y"), json::value<Float>(boundMax, "z"));
+        max_scalar_ = json::value<Float>(meta, "max_scalar");
+
+        LM_INFO("Loaded Converted Volume File");
+        LM_INFO("Extended Bound of Volume adapted to step_size: [{}, {}, {}] to [{}, {}, {}].",
+            bound_.min.x,
+            bound_.min.y,
+            bound_.min.z,
+            bound_.max.x,
+            bound_.max.y,
+            bound_.max.z);
+        LM_INFO("Step Counts: {}, {}, {}", dimension_.x, dimension_.y, dimension_.z);
+        LM_INFO("Max Scalar: {}", max_scalar_);
+
+        // create large enough buffer
+        auto volume_size = sizeof(float) * dimension_.x * dimension_.y * dimension_.z;
+        volume_ = static_cast<float*>(malloc(volume_size));
+        std::ifstream vdb_stream(path_meta, std::ios::binary);
+        vdb_stream.read(reinterpret_cast<char*>(volume_), volume_size);
+
+        // volume[z * x_steps * y_steps + y * x_steps + x] = 
     }
 
     virtual Bound bound() const override {
-        return Bound();
+        return bound_;
     }
 
     virtual Float max_scalar() const override {
-        return 0.0;
+        return max_scalar_;
     }
 
     virtual bool has_scalar() const override {
@@ -210,7 +249,7 @@ public:
     }
 
     virtual Float eval_scalar(Vec3 p) const override {
-        return 1.0;
+        return 1.0_f;
         // const auto d = vbdloaderEvalScalar(context_, VDBLoaderFloat3{ p.x, p.y, p.z });
         // return d * scale_;
     }
