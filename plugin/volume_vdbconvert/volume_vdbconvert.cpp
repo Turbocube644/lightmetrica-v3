@@ -19,9 +19,9 @@ using Vec3i = glm::tvec3<int>;
 class Volume_VdbConvertScalar : public Volume {
 private:
     Bound bound_;
-    Float max_scalar_;
+    Float max_scalar_{};
     float* volume_;
-    Vec3i dimension_;
+    Vec3i dimension_{};
 
     std::string getAbsolutePath(std::string filename)
     {
@@ -33,10 +33,10 @@ private:
 
     bool endsWith(const std::string s, const std::string end)
     {
-        size_t len = end.size();
+        const size_t len = end.size();
         if (len > s.size()) return false;
 
-        std::string substr = s.substr(s.size() - len, len);
+        const std::string substr = s.substr(s.size() - len, len);
         return end == substr;
     }
 
@@ -58,7 +58,7 @@ private:
     std::string getFileName(const std::string path)
     {
         const std::string upath = unixifyPath(path);
-        size_t idx = path.find("/", 0) + 1;
+        const size_t idx = path.find("/", 0) + 1;
         return upath.substr(idx, upath.length() - idx);
     }
 
@@ -177,16 +177,36 @@ private:
         for(int z = 0; z < z_steps; z++) {
             for (int y = 0; y < y_steps; y++) {
                 for (int x = 0; x < x_steps; x++) {
-                    float value = vbdloaderEvalScalar(context, VDBLoaderFloat3{bound.min.x + x * step_size, bound.min.y + y * step_size, bound.min.z + z * step_size});
+                    float value = float(vbdloaderEvalScalar(context, VDBLoaderFloat3{bound.min.x + x * step_size, bound.min.y + y * step_size, bound.min.z + z * step_size}));
                     converted_file_stream.write(reinterpret_cast<char*>(&value), sizeof(float));
                 }
             }
         }
         converted_file_stream.close();
 
+        LM_INFO("Point at (0, 0, 0): {}, {}", float(vbdloaderEvalScalar(context, VDBLoaderFloat3{0, 0, 0})), vbdloaderEvalScalar(context, VDBLoaderFloat3{ 0, 0, 0 }));
+
         vdbloaderReleaseContext(context);
 
         return true;
+    }
+
+    float eval_scalar(int x, int y, int z) const {
+        // first check if in bound. If out of bound --> Zero Density
+        if (x < 0 || y < 0 || z < 0
+            || x >= dimension_.x || y >= dimension_.y || z >= dimension_.z) {
+            return 0.0f;
+        }
+        // otherwise read from float array with data
+        return volume_[z * dimension_.x * dimension_.y + y * dimension_.x + x];
+    }
+
+    float lerp(int x1, int y1, int z1, int x2, int y2, int z2, float t) const {
+        return lerp(eval_scalar(x1, y1, z1), eval_scalar(x2, y2, z2), t);
+    }
+
+    float lerp(float a, float b, float t) const {
+        return a + t * (b - a);
     }
 
 public:
@@ -233,7 +253,7 @@ public:
         std::ifstream vdb_stream(path_meta, std::ios::binary);
         vdb_stream.read(reinterpret_cast<char*>(volume_), volume_size);
 
-        // volume[z * x_steps * y_steps + y * x_steps + x] = 
+        LM_INFO("Point at (0, 0, 0): {}", eval_scalar(Vec3(0)));
     }
 
     virtual Bound bound() const override {
@@ -249,9 +269,33 @@ public:
     }
 
     virtual Float eval_scalar(Vec3 p) const override {
-        return 1.0_f;
+        // Compute uv in bound
+        Vec3 p_boundSpace = (p - bound_.min) / (bound_.max - bound_.min);
+        // scale to address in volume array
+        p_boundSpace *= dimension_;
+
+        // aligned cube around our position p
+        const Vec3i lowerLeft = { int(std::floor(p_boundSpace.x)), int(std::floor(p_boundSpace.y)), int(std::floor(p_boundSpace.z)) };
+        const Vec3i upperRight = lowerLeft + Vec3i(1);
+        // factor for trilinear interpolation
+        const Vec3 t = p_boundSpace - Vec3(lowerLeft);
+        
+        // first interpolate on x-axis, then y-axis, z-axis
+        const float x00 = lerp(lowerLeft.x, lowerLeft.y, lowerLeft.z, upperRight.x, lowerLeft.y, lowerLeft.z, float(t.x));
+        const float x01 = lerp(lowerLeft.x, lowerLeft.y, upperRight.z, upperRight.x, lowerLeft.y, upperRight.z, float(t.x));
+        const float x10 = lerp(lowerLeft.x, upperRight.y, lowerLeft.z, upperRight.x, upperRight.y, lowerLeft.z, float(t.x));
+        const float x11 = lerp(lowerLeft.x, upperRight.y, upperRight.z, upperRight.x, upperRight.y, upperRight.z, float(t.x));
+        // now y-axis
+        const float y0 = lerp(x00, x10, float(t.y));
+        const float y1 = lerp(x01, x11, float(t.y));
+        // final interpolation
+        float z = lerp(y0, y1, float(t.z));
+
+        return Float(z);
         // const auto d = vbdloaderEvalScalar(context_, VDBLoaderFloat3{ p.x, p.y, p.z });
         // return d * scale_;
+        // 
+        // volume[z * x_steps * y_steps + y * x_steps + x] = 
     }
 
     virtual bool has_color() const override {
@@ -259,8 +303,9 @@ public:
     }
 
     virtual void march(Ray ray, Float tmin, Float tmax, Float marchStep, const RaymarchFunc& raymarchFunc) const override {
-        exception::ScopedDisableFPEx guard_;
-        const void* f = reinterpret_cast<const void*>(&raymarchFunc);
+        LM_ERROR("Not impleneted!");
+        // exception::ScopedDisableFPEx guard_;
+        // const void* f = reinterpret_cast<const void*>(&raymarchFunc);
         /*vdbloaderMarchVolume(
             context_,
             VDBLoaderFloat3{ ray.o.x, ray.o.y, ray.o.z },
