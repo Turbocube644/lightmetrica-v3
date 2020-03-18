@@ -66,6 +66,10 @@ public:
     Volume_VdbConvertScalar() : volume_(nullptr) {
     }
 
+    ~Volume_VdbConvertScalar() {
+        delete volume_;
+    }
+
 private:
     bool convert(const std::string& path, const Json& prop) {
         vdbloaderSetErrorFunc(nullptr, [](void*, int errorCode, const char* message) {
@@ -183,9 +187,6 @@ private:
             }
         }
         converted_file_stream.close();
-
-        LM_INFO("Point at (0, 0, 0): {}, {}", float(vbdloaderEvalScalar(context, VDBLoaderFloat3{0, 0, 0})), vbdloaderEvalScalar(context, VDBLoaderFloat3{ 0, 0, 0 }));
-
         vdbloaderReleaseContext(context);
 
         return true;
@@ -248,12 +249,10 @@ public:
         LM_INFO("Max Scalar: {}", max_scalar_);
 
         // create large enough buffer
-        auto volume_size = sizeof(float) * dimension_.x * dimension_.y * dimension_.z;
-        volume_ = static_cast<float*>(malloc(volume_size));
-        std::ifstream vdb_stream(path_meta, std::ios::binary);
-        vdb_stream.read(reinterpret_cast<char*>(volume_), volume_size);
-
-        LM_INFO("Point at (0, 0, 0): {}", eval_scalar(Vec3(0)));
+        auto volume_size = dimension_.x * dimension_.y * dimension_.z;
+        volume_ = new float[volume_size];
+        std::ifstream vdb_stream(path_converted, std::ios::in | std::ios::binary);
+        vdb_stream.read(reinterpret_cast<char*>(volume_), sizeof(float) * volume_size);
     }
 
     virtual Bound bound() const override {
@@ -292,37 +291,24 @@ public:
         float z = lerp(y0, y1, float(t.z));
 
         return Float(z);
-        // const auto d = vbdloaderEvalScalar(context_, VDBLoaderFloat3{ p.x, p.y, p.z });
-        // return d * scale_;
-        // 
-        // volume[z * x_steps * y_steps + y * x_steps + x] = 
     }
 
     virtual bool has_color() const override {
         return false;
     }
 
+#pragma warning(push)
+#pragma warning(disable:4100) // params not used
     virtual void march(Ray ray, Float tmin, Float tmax, Float marchStep, const RaymarchFunc& raymarchFunc) const override {
         LM_ERROR("Not impleneted!");
-        // exception::ScopedDisableFPEx guard_;
-        // const void* f = reinterpret_cast<const void*>(&raymarchFunc);
-        /*vdbloaderMarchVolume(
-            context_,
-            VDBLoaderFloat3{ ray.o.x, ray.o.y, ray.o.z },
-            VDBLoaderFloat3{ ray.d.x, ray.d.y, ray.d.z },
-            tmin, tmax, marchStep, const_cast<void*>(f),
-            [](void* user, double t) -> bool {
-                const void* f = const_cast<const void*>(user);
-                const RaymarchFunc& raymarchFunc = *reinterpret_cast<const RaymarchFunc*>(f);
-                return raymarchFunc(t);
-            });*/
     }
+#pragma warning(pop)
 };
-
-LM_COMP_REG_IMPL(Volume_VdbConvertScalar, "volume::vdb_convert");
 
 #undef META_ENDING
 #undef NEW_ENDING
 #undef VDB_ENDING
+
+LM_COMP_REG_IMPL(Volume_VdbConvertScalar, "volume::vdb_convert");
 
 LM_NAMESPACE_END(LM_NAMESPACE)
