@@ -22,6 +22,7 @@ private:
     Float max_scalar_{};
     float* volume_;
     Vec3i dimension_{};
+    Float scale_;
 
     std::string getAbsolutePath(std::string filename)
     {
@@ -96,8 +97,6 @@ private:
         std::string new_path_meta = new_path_base + META_ENDING;
         LM_INFO("Loaded OpnVDB. Now converting and saving to new format [path='{}'] with meta file [path='{}']", new_path, new_path_meta);
 
-        // Density scale, remove?
-        const Float scale = json::value<Float>(prop, "scale", 1_f);
         const Float step_size = json::value<Float>(prop, "step_size", .1_f);
 
         // Bound
@@ -107,7 +106,7 @@ private:
         bound.max = Vec3(b.max.x, b.max.y, b.max.z);
 
         // Maximum density
-        Float max_scalar = vbdloaderGetMaxScalar(context) * scale;
+        Float max_scalar = vbdloaderGetMaxScalar(context);
         LM_INFO("Max Scalar: {}", max_scalar);
 
         LM_INFO("Bound of Volume: [{}, {}, {}] to [{}, {}, {}].", 
@@ -225,6 +224,8 @@ public:
         std::string path_converted = path_base + NEW_ENDING;
         std::string path_meta = path_base + META_ENDING;
 
+        scale_ = json::value<Float>(prop, "scale", 1_f);
+
         std::ifstream meta_stream(path_meta);
         Json meta = Json::parse(meta_stream);
         const auto step_size = json::value<Float>(meta, "step_size");
@@ -235,7 +236,7 @@ public:
         Json boundMax = json::value<Json>(bound, "max");
         bound_.min = Vec3(json::value<Float>(boundMin, "x"), json::value<Float>(boundMin, "y"), json::value<Float>(boundMin, "z"));
         bound_.max = Vec3(json::value<Float>(boundMax, "x"), json::value<Float>(boundMax, "y"), json::value<Float>(boundMax, "z"));
-        max_scalar_ = json::value<Float>(meta, "max_scalar");
+        max_scalar_ = json::value<Float>(meta, "max_scalar") * scale_;
 
         LM_INFO("Loaded Converted Volume File");
         LM_INFO("Extended Bound of Volume adapted to step_size: [{}, {}, {}] to [{}, {}, {}].",
@@ -290,7 +291,7 @@ public:
         // final interpolation
         float z = lerp(y0, y1, float(t.z));
 
-        return Float(z);
+        return scale_ * z;
     }
 
     virtual bool has_color() const override {
