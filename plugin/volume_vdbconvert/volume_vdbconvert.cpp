@@ -298,12 +298,9 @@ public:
         return false;
     }
 
-#pragma warning(push)
-#pragma warning(disable:4100) // params not used
-    virtual void march(Ray ray, Float tmin, Float tmax, Float marchStep, const RaymarchFunc& raymarchFunc) const override {
+    virtual void march(Ray, Float, Float, Float, const RaymarchFunc&) const override {
         LM_ERROR("Not impleneted!");
     }
-#pragma warning(pop)
 };
 
 #undef META_ENDING
