@@ -49,7 +49,11 @@ set(_HEADER_FILES
     "${_INCLUDE_DIR}/objloader.h"
     "${_INCLUDE_DIR}/medium.h"
     "${_INCLUDE_DIR}/phase.h"
-    "${_INCLUDE_DIR}/volume.h")
+    "${_INCLUDE_DIR}/volume.h"
+    "${_INCLUDE_DIR}/path.h"
+    "${_INCLUDE_DIR}/bidir.h"
+    "${_INCLUDE_DIR}/timer.h"
+    )
 set(_SOURCE_FILES 
     "${_SOURCE_DIR}/component.cpp"
     "${_SOURCE_DIR}/version.cpp"
@@ -73,7 +77,6 @@ set(_SOURCE_FILES
     "${_SOURCE_DIR}/light/light_point.cpp"
     "${_SOURCE_DIR}/light/light_env.cpp"
     "${_SOURCE_DIR}/light/light_envconst.cpp"
-    "${_SOURCE_DIR}/light/light_envportal.cpp"
     "${_SOURCE_DIR}/texture/texture_bitmap.cpp"
     "${_SOURCE_DIR}/texture/texture_constant.cpp"
     "${_SOURCE_DIR}/material/material_diffuse.cpp"
@@ -82,17 +85,23 @@ set(_SOURCE_FILES
     "${_SOURCE_DIR}/material/material_mirror.cpp"
     "${_SOURCE_DIR}/material/material_mask.cpp"
     "${_SOURCE_DIR}/material/material_proxy.cpp"
+    "${_SOURCE_DIR}/material/material_mixture.cpp"
     "${_SOURCE_DIR}/film/film_bitmap.cpp"
     "${_SOURCE_DIR}/accel/accel_sahbvh.cpp"
     "${_SOURCE_DIR}/renderer/renderer_blank.cpp"
     "${_SOURCE_DIR}/renderer/renderer_raycast.cpp"
     "${_SOURCE_DIR}/renderer/renderer_pt.cpp"
+    "${_SOURCE_DIR}/renderer/renderer_lt.cpp"
+    "${_SOURCE_DIR}/renderer/renderer_bdpt.cpp"
+    "${_SOURCE_DIR}/renderer/renderer_bdptopt.cpp"
     "${_SOURCE_DIR}/renderer/renderer_volpt.cpp"
-    "${_SOURCE_DIR}/renderer/renderer_volpt_naive.cpp"
     "${_SOURCE_DIR}/medium/medium_homogeneous.cpp"
     "${_SOURCE_DIR}/medium/medium_heterogeneous.cpp"
     "${_SOURCE_DIR}/volume/volume_checker.cpp"
     "${_SOURCE_DIR}/volume/volume_constant.cpp"
+    "${_SOURCE_DIR}/volume/volume_gaussian.cpp"
+    "${_SOURCE_DIR}/volume/volume_multi.cpp"
+    "${_SOURCE_DIR}/volume/volume_sphere.cpp"
     "${_SOURCE_DIR}/phase/phase_hg.cpp"
     "${_SOURCE_DIR}/phase/phase_isotropic.cpp"
     "${_SOURCE_DIR}/ext/rang.hpp")
@@ -197,8 +206,13 @@ endif()
 target_link_libraries(${_PROJECT_NAME} PRIVATE liblm pybind11::module)
 set_target_properties(${_PROJECT_NAME} PROPERTIES PREFIX "${PYTHON_MODULE_PREFIX}" SUFFIX "${PYTHON_MODULE_EXTENSION}")
 set_target_properties(${_PROJECT_NAME} PROPERTIES FOLDER "lm/lib")
-# Export extension modules to the module directory
-set_target_properties(${_PROJECT_NAME} PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+if (CONDA_BUILD)
+    # Output extension modules to the module directory
+    set(_PYTHON_MODULE_DIR "${PROJECT_SOURCE_DIR}/lightmetrica")
+    set_target_properties(${_PROJECT_NAME} PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${_PYTHON_MODULE_DIR}")
+else()
+    set_target_properties(${_PROJECT_NAME} PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+endif()
 if (LM_INSTALL)
     install(
         TARGETS ${_PROJECT_NAME}

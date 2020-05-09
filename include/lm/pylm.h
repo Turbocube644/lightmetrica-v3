@@ -71,6 +71,18 @@ public:
             }
         }
         else {
+            // Extract underlying C++ type
+            // Check if the underlying type is registered to pybind,
+            // and the number of base class is one assuming multiple inheritance is not used.
+            auto& bases = all_type_info((PyTypeObject*)src.get_type().ptr());
+            if (bases.size() == 1) {
+                void* ptr = values_and_holders(reinterpret_cast<instance*>(src.ptr())).begin()->value_ptr();
+                auto* comp = static_cast<lm::Component*>(ptr);
+                // Extranct the locator of the instance
+                value = comp->loc();
+                return true;
+            }
+
             LM_UNREACHABLE();
             return false;
         }
@@ -291,7 +303,7 @@ LM_NAMESPACE_BEGIN(detail)
 */
 template <typename InterfaceT>
 static void reg_comp_wrap(pybind11::object impl_class, const char* name) {
-    lm::comp::detail::reg(name,
+    lm::comp::detail::reg(name, "",
         [impl_class = impl_class]() -> lm::Component* {
             pybind11::gil_scoped_acquire gil;
 

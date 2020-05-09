@@ -45,6 +45,11 @@ set_property(GLOBAL PROPERTY FIND_LIBRARY_USE_LIB64_PATHS TRUE)
 # External dependencies
 find_package(Threads REQUIRED)
 find_package(OpenMP REQUIRED)
+# This prevents for pybind11 to use C++ standard flags -std=c++14 in its CMake script,
+# which introduces duplicated -std flags in the g++ commands.
+# This causes a problem since some compiler versions (e.g., GCC 7.3)
+# prioritize -std=c++14 rather than -std=C++17.
+set(CMAKE_CXX_STANDARD 17)
 find_package(pybind11 REQUIRED)
 find_package(cereal REQUIRED)
 find_package(glm REQUIRED)
@@ -58,12 +63,14 @@ endif()
 # -------------------------------------------------------------------------------------------------
 
 # Execute git command in the project root and check revision number
-find_package(Git REQUIRED)
-execute_process(
-	COMMAND "${GIT_EXECUTABLE}" "rev-parse" "--short" "HEAD"
-	OUTPUT_VARIABLE LM_VERSION_REVISION
-	OUTPUT_STRIP_TRAILING_WHITESPACE
-)
+find_package(Git)
+if (Git_FOUND)
+    execute_process(
+        COMMAND "${GIT_EXECUTABLE}" "rev-parse" "--short" "HEAD"
+        OUTPUT_VARIABLE LM_VERSION_REVISION
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+endif()
 
 # Current build timestamp
 string(TIMESTAMP LM_BUILD_TIMESTAMP "%Y-%m-%d %H.%M.%S")
