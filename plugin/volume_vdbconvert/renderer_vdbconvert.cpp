@@ -10,6 +10,8 @@
 #include <lm/scene.h>
 #include <lm/phase.h>
 #include <lm/scheduler.h>
+#include <lm/path.h>
+#include <lm/timer.h>
 
 LM_NAMESPACE_BEGIN(LM_NAMESPACE)
 
@@ -51,9 +53,10 @@ public:
     
     // Assume volume stores density of the extinction coefficient and
     // densityScale_ is multipled to the evaluated density value.
-    virtual void render() const override {
+    virtual Json render() const override {
         film_->clear();
         const auto size = film_->size();
+        timer::ScopedTimer st;
 
         // Compute colors for each pixel
         sched_->run([&](long long pixelIndex, long long, int) {
@@ -61,7 +64,7 @@ public:
             const int y = int(pixelIndex / size.w);
 
             // Generate primary ray
-            const auto ray = scene_->primary_ray({(x+.5_f)/size.w, (y+.5_f)/size.h}, film_->aspect_ratio());
+            const auto ray = path::primary_ray(scene_, { (x + .5_f) / size.w, (y + .5_f) / size.h });
 
             // Ray marching
             Vec3 L(0_f);
@@ -103,6 +106,8 @@ public:
             // Record to the film
             film_->set_pixel(x, y, L);
         });
+
+        return { {"elapsed", st.now()} };
     }
 };
 
